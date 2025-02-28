@@ -5,9 +5,9 @@ import subprocess
 import sys
 import shutil
 import json
-from manager import DNSManager  # Assuming the DNSManager is in manager.py
+import socket
+from manager import DNSManager
 
-# A scrollable frame to be used in multiple places
 class ScrollableFrame(tk.Frame):
     def __init__(self, container, height=150, *args, **kwargs):
         super().__init__(container, *args, **kwargs)
@@ -266,6 +266,67 @@ class InfoTab:
                              justify=tk.LEFT, wraplength=450)
         description.pack(pady=10, padx=10, anchor=tk.W)
 
+
+class DNSTestTab:
+    def __init__(self, parent):
+        self.main_container = MainScrollableFrame(parent)
+        self.main_container.pack(fill="both", expand=True)
+
+        title_label = tk.Label(self.main_container.scrollable_frame, text="DNS Ping Test", font=("Arial", 14, "bold"))
+        title_label.pack(pady=10)
+
+        # Predefined servers to test (domains from user instruction)
+        self.predefined_servers = [
+            "chatgpt.com",
+            "aistudio.google.com",
+            "developer.android.com"
+        ]
+
+        self.check_vars = {}
+        for server in self.predefined_servers:
+            var = tk.BooleanVar()
+            chk = tk.Checkbutton(self.main_container.scrollable_frame, text=server, variable=var)
+            chk.pack(anchor=tk.W, padx=20)
+            self.check_vars[server] = var
+
+        test_button = tk.Button(self.main_container.scrollable_frame, text="Test Selected Servers", command=self.test_servers)
+        test_button.pack(pady=10)
+
+        self.results_text = tk.Text(self.main_container.scrollable_frame, height=10, width=53)
+        self.results_text.pack(pady=5)
+
+    def test_servers(self):
+        self.results_text.delete(1.0, tk.END)
+        for server, var in self.check_vars.items():
+            if var.get():
+                try:
+                    # Resolve domain to IP using system DNS
+                    ip = socket.gethostbyname(server)
+                    # Ping the resolved IP
+                    success, latency = self.ping_ip(ip)
+                    if success:
+                        self.results_text.insert(tk.END, f"{server} ({ip}): Ping successful ({latency}ms)\n")
+                    else:
+                        self.results_text.insert(tk.END, f"{server} ({ip}): Ping failed\n")
+                except socket.gaierror:
+                    self.results_text.insert(tk.END, f"{server}: DNS resolution failed\n")
+        self.results_text.see(tk.END)
+
+    def ping_ip(self, ip):
+        try:
+            if sys.platform.startswith("win"):
+                command = ['ping', '-n', '1', ip]
+            else:
+                command = ['ping', '-c', '1', ip]
+            output = subprocess.check_output(command, stderr=subprocess.STDOUT, universal_newlines=True)
+            # Extract latency from ping output
+            if 'time=' in output:
+                time_part = output.split('time=')[1].split(' ')[0]
+                return True, time_part
+            return False, None
+        except subprocess.CalledProcessError:
+            return False, None
+
 if __name__ == "__main__":
     root = tk.Tk()
     root.title("System Configuration Tool")
@@ -278,10 +339,12 @@ if __name__ == "__main__":
     # Add Tabs
     dns_tab = DNSApp(notebook)
     docker_tab = DockerRepoApp(notebook)
-    info_tab = InfoTab(notebook)  # New Info Tab
+    info_tab = InfoTab(notebook)
+    dns_test_tab = DNSTestTab(notebook)  # New DNS Test Tab
     
     notebook.add(dns_tab.main_container, text="DNS Manager")
     notebook.add(docker_tab.main_container, text="Docker Registry")
-    notebook.add(info_tab.main_container, text="Info")  # Add Info tab to notebook
+    notebook.add(dns_test_tab.main_container, text="DNS Test")  # Add new tab
+    notebook.add(info_tab.main_container, text="Info")
     
     root.mainloop()
